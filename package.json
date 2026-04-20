@@ -1,0 +1,29 @@
+{
+  "name": "@xeplr/jobs",
+  "version": "1.0.0",
+  "description": "Pluggable job queue service: create, schedule, and track background jobs",
+  "main": "index.js",
+  "files": ["index.js", "lib/", "bin/", "models/", "migrations/"],
+  "bin": {
+    "xeplr-jobs-migrate": "./bin/migrate.js",
+    "xeplr-jobs-server": "./bin/server.js"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./bin/server": "./bin/server.js",
+    "./package.json": "./package.json"
+  },
+  "keywords": ["jobs", "queue", "background", "scheduler", "express"],
+  "author": "xeplr",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/xeplr/xeplr" },
+  "publishConfig": { "access": "public" },
+  "dependencies": {
+    "@xeplr/base-apis": "^1.0.0",
+    "@xeplr/db": "^1.0.0",
+    "@xeplr/utils": "^1.0.0"
+  },
+  "peerDependencies": {
+    "express": "^4.0.0 || ^5.0.0"
+  }
+}
