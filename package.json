@@ -1,9 +1,9 @@
 {
   "name": "@xeplr/jobs",
-  "version": "1.0.0",
-  "description": "Pluggable job queue service: create, schedule, and track background jobs",
+  "version": "2.0.0",
+  "description": "Scheduled + manual action runner — cron picks jobs and hands them off to @xeplr/actions",
   "main": "index.js",
-  "files": ["index.js", "lib/", "bin/", "models/", "migrations/", "seeds/"],
+  "files": ["index.js", "lib/", "bin/", "models/", "migrations/"],
   "bin": {
     "xeplr-jobs-migrate": "./bin/migrate.js",
     "xeplr-jobs-server": "./bin/server.js"
@@ -13,14 +13,16 @@
     "./bin/server": "./bin/server.js",
     "./package.json": "./package.json"
   },
-  "keywords": ["jobs", "queue", "background", "scheduler", "express"],
+  "keywords": ["jobs", "queue", "background", "scheduler", "express", "cron"],
   "author": "xeplr",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/Xeplr/xeplr-jobs" },
   "publishConfig": { "access": "public" },
   "dependencies": {
+    "@xeplr/actions": "^1.0.0",
     "@xeplr/base-apis": "^1.0.0",
     "@xeplr/db": "^1.0.0",
+    "@xeplr/schema-handler": "^1.0.0",
     "@xeplr/utils": "^1.0.0",
     "cron-parser": "^4.9.0"
   },

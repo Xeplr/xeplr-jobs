@@ -2,15 +2,13 @@ const { getConnection, bindModels } = require('@xeplr/db');
 const createApp = require('@xeplr/base-apis/express');
 const createJobRouter = require('./lib/jobRouter');
 const scheduler = require('./lib/scheduler');
-const registry = require('./lib/registry');
-const errors = require('./lib/errors');
 const models = require('./models');
+const actions = require('@xeplr/actions');
 
-let _initialized = false;
 let _schedulerHandle = null;
 
 /**
- * Initialize xeplr-jobs — wires up the DB connection and binds models.
+ * Initialize xeplr-jobs — wires the DB connection and binds models.
  * Call once at process startup before creating routers or starting the scheduler.
  */
 function init(config) {
@@ -22,20 +20,13 @@ function init(config) {
   );
   const connection = getConnection(dbName, dbOptions);
   bindModels(connection);
-  _initialized = true;
   return connection;
 }
 
-/**
- * Build the Express router (job types, jobs, reactivity, occurrences + actions).
- * Call init() first.
- */
-function router(options) {
-  return createJobRouter(options || {});
-}
+function router(options) { return createJobRouter(options || {}); }
 
 /**
- * Start the scheduler loop against the initialized DB connection.
+ * Start the scheduler loop.
  * config: { intervalMs, maxConcurrent, logger }
  */
 function startScheduler(config) {
@@ -55,9 +46,8 @@ function stopScheduler() {
 }
 
 /**
- * Start xeplr-jobs as a standalone Express server. Optionally boots the
- * scheduler in the same process (default: true — set startScheduler:false
- * to run the API only, e.g. when the scheduler is a separate deploy).
+ * Start as a standalone Express server. Boots the scheduler in the same
+ * process by default; set startScheduler:false to run the API only.
  */
 function start(config) {
   config = config || {};
@@ -89,10 +79,12 @@ module.exports = {
   models,
   startScheduler,
   stopScheduler,
-  registerExecutor: registry.registerExecutor,
-  getExecutor: registry.getExecutor,
-  listRegistered: registry.listRegistered,
-  TransientError: errors.TransientError,
-  ValidationError: errors.ValidationError,
-  ExecutorNotRegisteredError: errors.ExecutorNotRegisteredError
+
+  // Re-export from @xeplr/actions so consumers who install jobs don't need
+  // to install actions separately for the common case (register + run).
+  registerAction:          actions.register,
+  listActions:             actions.list,
+  runAction:               actions.runAction,
+  ActionNotRegisteredError: actions.ActionNotRegisteredError,
+  TransientError:           actions.TransientError
 };

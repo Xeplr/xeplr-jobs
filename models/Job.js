@@ -8,20 +8,17 @@ class Job extends BaseModel {
   static get jsonSchema() {
     return {
       type: 'object',
-      required: ['id', 'jobTypeId', 'name'],
+      required: ['id', 'name', 'actionName'],
       properties: {
         id: { type: 'string', maxLength: 25 },
-        jobTypeId: { type: 'string', maxLength: 25 },
         name: { type: 'string', maxLength: 255 },
         description: { type: ['string', 'null'] },
-        jobInputs: { type: ['object', 'null'] },
+        actionName: { type: 'string', maxLength: 100 },
+        inputs: { type: ['object', 'null'] },
         status: { type: 'string', maxLength: 20 },
         running: { type: 'boolean' },
         schedule: { type: ['string', 'null'], maxLength: 100 },
         nextRunAt: { type: ['string', 'null'] },
-        paramSchema: { type: ['array', 'null'] },
-        outputSchema: { type: ['object', 'null'] },
-        outputSchemaMode: { type: 'string', maxLength: 20 },
         isActive: { type: 'boolean' },
         recordCreatedDate: { type: ['string', 'null'] },
         recordModifiedDate: { type: ['string', 'null'] },
@@ -42,25 +39,8 @@ class Job extends BaseModel {
   }
 
   static get relationMappings() {
-    var JobType = require('./JobType');
-    var JobReactivity = require('./JobReactivity');
     var JobOccurrence = require('./JobOccurrence');
     return {
-      jobType: {
-        relation: BaseModel.BelongsToOneRelation,
-        modelClass: JobType,
-        join: { from: 'jobs.jobTypeId', to: 'jobTypes.id' }
-      },
-      downstreamLinks: {
-        relation: BaseModel.HasManyRelation,
-        modelClass: JobReactivity,
-        join: { from: 'jobs.id', to: 'jobReactivity.sourceJobId' }
-      },
-      upstreamLinks: {
-        relation: BaseModel.HasManyRelation,
-        modelClass: JobReactivity,
-        join: { from: 'jobs.id', to: 'jobReactivity.targetJobId' }
-      },
       occurrences: {
         relation: BaseModel.HasManyRelation,
         modelClass: JobOccurrence,

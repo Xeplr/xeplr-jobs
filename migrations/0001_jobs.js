@@ -1,21 +1,19 @@
-// Jobs — instances of a Job Type with user-filled config + runtime metadata.
-//   schedule    — cron expression; NULL for reactive or manual-only jobs
-//   paramSchema — array of param definitions; present only for reactive jobs
-//   running     — lock flag; the scheduler skips rows where running=true
+// Jobs — one row per scheduled/manual "run this action" instance.
+//   actionName  — name of a registered action (see @xeplr/actions).
+//   inputs      — JSON, validated against the action's inputSchema at run time.
+//   schedule    — cron expression; NULL for manual-only jobs.
+//   running     — lock flag; the scheduler skips rows where running=true.
 exports.up = function(knex) {
   return knex.schema.createTable('jobs', function(table) {
     table.string('id', 25).primary();
-    table.string('jobTypeId', 25).notNullable();
     table.string('name', 255).notNullable();
     table.text('description');
-    table.jsonb('jobInputs').notNullable().defaultTo('{}');
-    table.string('status', 20).notNullable().defaultTo('ready');
+    table.string('actionName', 100).notNullable();
+    table.jsonb('inputs').notNullable().defaultTo('{}');
+    table.string('status', 20).notNullable().defaultTo('ready');   // 'ready' | 'pause'
     table.boolean('running').notNullable().defaultTo(false);
     table.string('schedule', 100);
     table.timestamp('nextRunAt');
-    table.jsonb('paramSchema');
-    table.jsonb('outputSchema').notNullable().defaultTo('{"context":{},"data":{}}');
-    table.string('outputSchemaMode', 20).notNullable().defaultTo('learn');
     table.boolean('isActive').defaultTo(true);
     table.timestamp('recordCreatedDate').defaultTo(knex.fn.now());
     table.timestamp('recordModifiedDate').defaultTo(knex.fn.now());
@@ -23,7 +21,7 @@ exports.up = function(knex) {
     table.string('recordModifiedBy', 25);
 
     table.index(['status', 'running', 'nextRunAt'], 'idx_jobs_picker');
-    table.index('jobTypeId');
+    table.index('actionName');
   });
 };
 
