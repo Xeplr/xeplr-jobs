@@ -6,7 +6,7 @@ try {
 } catch (_) {}
 
 const path = require('path');
-const { up, rollback, status } = require('@xeplr/db').migrator;
+const { up, rollback, status, seed } = require('@xeplr/db').migrator;
 const { resolveConfig } = require('@xeplr/db');
 
 /**
@@ -38,10 +38,11 @@ async function main() {
     ...args,
     db: args.db || process.env.DB_JOBS || process.env.DB_NAME,
     dir: path.join(__dirname, '..', 'migrations'),
+    seedsDir: path.join(__dirname, '..', 'seeds'),
     connectionName: args['connection-name'] || args.connectionName || 'jobs'
   };
 
-  if (['up', 'rollback', 'status'].indexOf(command) !== -1) {
+  if (['up', 'rollback', 'status', 'seed:run'].indexOf(command) !== -1) {
     await resolveConfig(options.connectionName);
   }
 
@@ -78,13 +79,24 @@ async function main() {
       }
       break;
     }
+    case 'seed:run': {
+      const result = await seed(options);
+      if (!result || result.length === 0) {
+        console.log('No seed files to run');
+      } else {
+        console.log(`Ran ${result.length} seed files:`);
+        result.forEach(s => console.log(`  - ${s}`));
+      }
+      break;
+    }
     default:
-      console.log('xeplr-jobs-migrate - Jobs database migrations');
+      console.log('xeplr-jobs-migrate - Jobs database migrations & seeds');
       console.log('');
       console.log('Commands:');
       console.log('  up [--db <name>]        Run pending migrations');
       console.log('  rollback [--db <name>]  Rollback last batch');
       console.log('  status [--db <name>]    Show migration status');
+      console.log('  seed:run [--db <name>]  Seed built-in JobType templates (idempotent)');
       console.log('');
       console.log('Options:');
       console.log('  --db        Database name (or DB_JOBS env)');

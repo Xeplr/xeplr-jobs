@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Pluggable job queue service: create, schedule, and track background jobs",
   "main": "index.js",
-  "files": ["index.js", "lib/", "bin/", "models/", "migrations/"],
+  "files": ["index.js", "lib/", "bin/", "models/", "migrations/", "seeds/"],
   "bin": {
     "xeplr-jobs-migrate": "./bin/migrate.js",
     "xeplr-jobs-server": "./bin/server.js"
