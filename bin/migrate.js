@@ -1,7 +1,20 @@
 #!/usr/bin/env node
 
+try {
+  var envName = (process.env.NODE_ENV || 'development') + '.env';
+  require('dotenv').config({ path: require('path').join(process.cwd(), envName) });
+} catch (_) {}
+
 const path = require('path');
 const { up, rollback, status } = require('@xeplr/db').migrator;
+const { resolveConfig } = require('@xeplr/db');
+
+/**
+ * xeplr-jobs-migrate
+ *
+ * Runs jobs migrations bundled with this package.
+ * Reuses xeplr-db's migrator — no duplicated knex logic.
+ */
 
 function parseArgs(argv) {
   const args = { _: [] };
@@ -24,8 +37,13 @@ async function main() {
   const options = {
     ...args,
     db: args.db || process.env.DB_JOBS || process.env.DB_NAME,
-    dir: path.join(__dirname, '..', 'migrations')
+    dir: path.join(__dirname, '..', 'migrations'),
+    connectionName: args['connection-name'] || args.connectionName || 'jobs'
   };
+
+  if (['up', 'rollback', 'status'].indexOf(command) !== -1) {
+    await resolveConfig(options.connectionName);
+  }
 
   switch (command) {
     case 'up': {
@@ -64,15 +82,12 @@ async function main() {
       console.log('xeplr-jobs-migrate - Jobs database migrations');
       console.log('');
       console.log('Commands:');
-      console.log('  up [--db <name>]       Run pending migrations');
+      console.log('  up [--db <name>]        Run pending migrations');
       console.log('  rollback [--db <name>]  Rollback last batch');
       console.log('  status [--db <name>]    Show migration status');
       console.log('');
       console.log('Options:');
       console.log('  --db        Database name (or DB_JOBS env)');
-      console.log('  --host      DB host (default: DB_HOST env or localhost)');
-      console.log('  --user      DB user (default: DB_USER env or root)');
-      console.log('  --password  DB password (default: DB_PASSWORD env)');
   }
 }
 
