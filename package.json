@@ -1,9 +1,15 @@
 {
   "name": "@xeplr/jobs",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Scheduled + manual action runner — cron picks jobs and hands them off to @xeplr/actions",
   "main": "index.js",
-  "files": ["index.js", "lib/", "bin/", "models/", "migrations/"],
+  "files": [
+    "index.js",
+    "lib/",
+    "bin/",
+    "models/",
+    "migrations/"
+  ],
   "bin": {
     "xeplr-jobs-migrate": "./bin/migrate.js",
     "xeplr-jobs-server": "./bin/server.js"
@@ -13,11 +19,23 @@
     "./bin/server": "./bin/server.js",
     "./package.json": "./package.json"
   },
-  "keywords": ["jobs", "queue", "background", "scheduler", "express", "cron"],
+  "keywords": [
+    "jobs",
+    "queue",
+    "background",
+    "scheduler",
+    "express",
+    "cron"
+  ],
   "author": "xeplr",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/Xeplr/xeplr-jobs" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xeplr/xeplr-jobs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@xeplr/actions": "^1.0.0",
     "@xeplr/base-apis": "^1.0.0",
