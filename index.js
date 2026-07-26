@@ -11,15 +11,12 @@ let _schedulerHandle = null;
  * Initialize xeplr-jobs — wires the DB connection and binds models.
  * Call once at process startup before creating routers or starting the scheduler.
  */
-function init(config) {
+async function init(config) {
   config = config || {};
   const dbName = config.database || process.env.DB_JOBS || 'jobs';
-  const dbOptions = Object.assign(
-    { connectionName: config.connectionName || 'jobs' },
-    config.db || {}
-  );
-  const connection = getConnection(dbName, dbOptions);
-  bindModels(connection);
+  const connection = await getConnection(dbName, config.connection || config.db, {
+    connectionName: config.connectionName || 'jobs'
+  });
   return connection;
 }
 

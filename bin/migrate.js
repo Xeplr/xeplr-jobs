@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 
-try {
-  var envName = (process.env.NODE_ENV || 'development') + '.env';
-  require('dotenv').config({ path: require('path').join(process.cwd(), envName) });
-} catch (_) {}
+// Reads process.env ONLY. The consuming app loads its .env (e.g. via dotenv-cli
+// in the npm script) — @xeplr/* packages never read .env files.
 
 const path = require('path');
 const { up, rollback, status } = require('@xeplr/db').migrator;
