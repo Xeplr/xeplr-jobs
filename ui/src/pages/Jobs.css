@@ -1,0 +1,413 @@
+/* Scheduled jobs. Namespaced jb-* — nothing here is shared with the dashboard
+   list (dl-*) or the builder (dsh-*). */
+
+.jb-page { padding-bottom: 48px; }
+
+.jb-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap; margin: 8px 0 22px;
+}
+.jb-head h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: -0.02em; }
+.jb-head p { margin: 0; font-size: 14px; }
+.jb-head-tools { display: flex; align-items: center; gap: 10px; }
+
+.jb-search, .jb-sort {
+  padding: 9px 12px; font: inherit; font-size: 14px;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--hair); border-radius: 9px;
+}
+.jb-search { width: 220px; }
+.jb-search:focus, .jb-sort:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--xeplr-accent-soft);
+}
+
+.jb-primary {
+  padding: 9px 16px; font: inherit; font-weight: 600; white-space: nowrap;
+  color: #fff; background: var(--accent); border: 0; border-radius: 9px; cursor: pointer;
+}
+.jb-primary:hover { filter: brightness(1.06); }
+.jb-primary:disabled { opacity: .55; cursor: default; filter: none; }
+
+/* ── the table ───────────────────────────────────────────────────────── */
+.jb-table-wrap {
+  background: var(--surface); border: 1px solid var(--hair);
+  border-radius: 13px; overflow: hidden;
+}
+.jb-table { width: 100%; border-collapse: collapse; }
+.jb-table thead th {
+  padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  background: var(--plane); border-bottom: 1px solid var(--hair); white-space: nowrap;
+}
+.jb-table td {
+  padding: 13px 16px; vertical-align: top; font-size: 14px;
+  border-bottom: 1px solid var(--xeplr-border-secondary);
+}
+.jb-table tbody tr:last-child td { border-bottom: 0; }
+.jb-table tbody tr:hover { background: var(--xeplr-hover); }
+
+.jb-name { font-weight: 600; }
+.jb-desc { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.jb-dim { color: var(--muted); }
+.jb-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  background: var(--plane); padding: 2px 6px; border-radius: 6px;
+}
+.jb-lastrun { display: inline-flex; align-items: center; gap: 8px; }
+
+.jb-row-actions { white-space: nowrap; }
+.jb-row-actions button {
+  margin-right: 4px; padding: 5px 10px; font: inherit; font-size: 13px;
+  color: inherit; background: transparent;
+  border: 1px solid var(--hair); border-radius: 7px; cursor: pointer;
+}
+.jb-row-actions button:hover:not(:disabled) { background: var(--surface); border-color: var(--xeplr-border-strong); }
+.jb-row-actions button:disabled { opacity: .45; cursor: default; }
+.jb-danger { color: var(--xeplr-danger); }
+
+/* ── pills ────────────────────────────────────────────────────────────
+   Colour AND word, never colour alone — a pill that is only green tells a
+   colour-blind reader nothing. */
+.jb-pill {
+  display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; text-transform: capitalize;
+}
+.jb-table td .jb-pill { margin-top: 6px; }
+.jb-pill--running, .jb-pill--busy { background: var(--xeplr-status-warn-soft); color: var(--xeplr-status-warn); }
+.jb-pill--scheduled { background: var(--xeplr-accent-soft); color: var(--accent); }
+.jb-pill--paused, .jb-pill--manual, .jb-pill--unknown { background: var(--xeplr-tag-bg); color: var(--xeplr-tag-text); }
+.jb-pill--good { background: var(--xeplr-status-good-soft); color: var(--xeplr-status-good); }
+.jb-pill--bad { background: var(--xeplr-status-critical-soft); color: var(--xeplr-status-critical); }
+
+/* ── live updates ────────────────────────────────────────────────────── */
+
+/* The count of rows read so far, beside the Running pill. Tabular figures so
+   the number does not jitter sideways as it climbs — it updates every couple
+   of seconds, and proportional digits make a settled row look like it is
+   twitching. */
+.jb-progress {
+  display: inline-block; margin: 6px 0 0 6px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--xeplr-accent-soft); color: var(--accent);
+}
+
+/* Reporting, then silent. Toned DOWN rather than up: a long final write is
+   the commonest cause and it is not an error, so this is a prompt to look
+   rather than an alarm. */
+.jb-progress--stale { background: var(--xeplr-tag-bg); color: var(--xeplr-tag-text); }
+
+.jb-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--xeplr-tag-text); cursor: pointer; user-select: none;
+  white-space: nowrap;
+}
+.jb-live input { cursor: pointer; margin: 0; }
+.jb-live-count {
+  padding: 1px 7px; border-radius: 999px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--xeplr-status-warn-soft); color: var(--xeplr-status-warn);
+}
+
+/* ── the editor ──────────────────────────────────────────────────────── */
+/* WIDTH IS THE POINT. This was max-width:560px, which left half the screen
+   empty next to a form tall enough to scroll — the two worst properties a
+   form can have at once. Fields now flow into columns instead of stacking. */
+.jb-editor {
+  max-width: 1100px; margin: 0 0 24px; padding: 22px 26px;
+  background: var(--surface); border: 1px solid var(--hair); border-radius: 13px;
+}
+.jb-editor h2 { margin: 0 0 16px; font-size: 17px; }
+.jb-field { display: grid; gap: 5px; margin-bottom: 14px; align-content: start; }
+
+/* Two columns from 760px, three from 1100px. Fields are short and unrelated
+   to each other, so a single column just makes a taller page. */
+.jb-grid { display: grid; gap: 0 22px; grid-template-columns: 1fr; }
+@media (min-width: 760px)  { .jb-grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1100px) { .jb-grid { grid-template-columns: 1fr 1fr 1fr; } }
+/* JSON needs room to be read, so it takes the whole row. */
+.jb-field--wide { grid-column: 1 / -1; }
+.jb-field label {
+  font-size: 13px; font-weight: 500; color: var(--ink);
+}
+.jb-field input, .jb-field select {
+  width: 100%; padding: 9px 11px; font: inherit; font-size: 14px;
+  color: var(--xeplr-input-text); background: var(--xeplr-input-bg);
+  border: 1px solid var(--xeplr-input-border); border-radius: 8px;
+}
+.jb-field input:focus, .jb-field select:focus { outline: none; border-color: var(--accent); }
+.jb-cron { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.jb-help { font-size: 12px; color: var(--muted); }
+.jb-warn { color: var(--xeplr-status-warn); }
+.jb-req { color: var(--xeplr-danger); }
+.jb-type { color: var(--xeplr-muted-2); font-size: 11px; }
+.jb-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.jb-editor-actions button:not(.jb-primary) {
+  padding: 9px 16px; font: inherit; color: inherit; background: transparent;
+  border: 1px solid var(--hair); border-radius: 9px; cursor: pointer;
+}
+
+/* ── history ─────────────────────────────────────────────────────────── */
+.jb-section { margin: 30px 0 12px; font-size: 17px; }
+.jb-runs { display: grid; gap: 6px; }
+.jb-run {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; font-size: 13px;
+  background: var(--surface); border: 1px solid var(--hair); border-radius: 10px;
+}
+.jb-run .jb-pill { margin-top: 0; }
+.jb-run-name { font-weight: 600; }
+.jb-run-error { color: var(--xeplr-danger); }
+
+/* ── empty ───────────────────────────────────────────────────────────── */
+.jb-empty {
+  padding: 40px 24px; text-align: center;
+  background: var(--surface); border: 1px dashed var(--hair); border-radius: 13px;
+}
+.jb-empty--inline { border: 0; border-radius: 0; padding: 32px 24px; }
+.jb-empty-title { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+.jb-empty p { margin: 0 0 6px; }
+.jb-empty button { margin-top: 12px; }
+
+.jb-footnote { margin-top: 28px; font-size: 13px; }
+.jb-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+@media (max-width: 900px) {
+  .jb-head-tools { width: 100%; }
+  .jb-search { flex: 1; width: auto; }
+}
+
+/* ── Run history, expanded under a job ─────────────────────────────────── */
+
+/* The last-run cell is a button, but must not LOOK like one — it sits in a
+   table cell and its job is to read as the value it already was. Only the
+   caret and the cursor say it does anything. */
+.jb-lastrun--btn {
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: inherit; cursor: pointer; text-align: left;
+}
+.jb-lastrun--btn:hover .jb-caret { color: var(--accent); }
+.jb-lastrun--btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+.jb-caret {
+  color: var(--muted); font-size: 15px; line-height: 1;
+  transition: transform .12s ease; display: inline-block;
+}
+.jb-caret--open { transform: rotate(90deg); }
+
+/* The open row and its history read as one block, so the parent loses its
+   bottom rule and the panel picks up the accent edge. */
+.jb-row--open > td { border-bottom: 0; background: var(--xeplr-hover); }
+.jb-runs-row > td { padding: 0 0 14px 0; background: var(--xeplr-hover); }
+.jb-runs-row:hover > td { background: var(--xeplr-hover); }
+
+.jb-history {
+  margin: 0 14px; border: 1px solid var(--hair); border-radius: 11px;
+  background: var(--surface); overflow: hidden;
+}
+.jb-history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.jb-history-table th {
+  text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  background: var(--plane); border-bottom: 1px solid var(--hair); white-space: nowrap;
+}
+.jb-history-table td { padding: 8px 12px; border-bottom: 1px solid var(--xeplr-border-secondary); vertical-align: top; }
+.jb-history-table tr:last-child td { border-bottom: 0; }
+
+.jb-runs-note { margin: 10px 14px; font-size: 13px; }
+
+/* A retry count belongs NEXT TO the outcome, not in its own column — it is a
+   qualifier on "how did it go", not a separate fact. */
+.jb-retry {
+  margin-left: 8px; font-size: 12px; color: var(--xeplr-status-warn);
+  white-space: nowrap;
+}
+
+/* A late finish is not a failure: the work completed. It reads as a setting to
+   change, which is why it is warn-toned rather than critical. */
+.jb-late { color: var(--xeplr-status-warn); font-size: 12px; }
+
+/* interrupted / skipped — neither broken nor fine. */
+.jb-pill--warn { background: var(--xeplr-status-warn-soft); color: var(--xeplr-status-warn); }
+
+/* ── Editor: three sections ────────────────────────────────────────────── */
+
+.jb-steps {
+  display: flex; gap: 6px; margin: 4px 0 2px;
+  border-bottom: 1px solid var(--hair); padding-bottom: 0;
+}
+.jb-step {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px; background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 14px; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.jb-step:hover { color: var(--ink); }
+.jb-step--on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.jb-step:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+
+/* The number is the affordance that says "these are ordered" — without it a
+   row of three words reads as tabs, which promise no sequence at all. */
+.jb-step-n {
+  display: inline-grid; place-items: center;
+  width: 21px; height: 21px; border-radius: 50%;
+  font-size: 12px; font-weight: 600;
+  background: var(--xeplr-tag-bg); color: var(--xeplr-tag-text);
+}
+.jb-step--on .jb-step-n { background: var(--accent); color: #fff; }
+.jb-step--done .jb-step-n { background: var(--xeplr-status-good-soft); color: var(--xeplr-status-good); }
+
+.jb-step-hint { margin: 10px 0 14px; font-size: 13px; color: var(--muted); }
+
+.jb-editor textarea {
+  padding: 9px 11px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--xeplr-input-text); background: var(--xeplr-input-bg);
+  border: 1px solid var(--xeplr-input-border); border-radius: 8px;
+  resize: vertical; width: 100%; box-sizing: border-box;
+}
+.jb-editor textarea:focus { outline: none; border-color: var(--accent); }
+
+/* Cancel on the left, Save on the right, stepping in between — so the
+   destructive and the committing action never sit next to each other. */
+.jb-editor-nav { display: inline-flex; gap: 8px; margin-left: auto; }
+.jb-editor-nav button {
+  padding: 7px 14px; font-size: 13px; color: var(--ink); background: var(--plane);
+  border: 1px solid var(--hair); border-radius: 8px; cursor: pointer;
+}
+.jb-editor-nav button:hover:not(:disabled) { background: var(--surface); border-color: var(--xeplr-border-strong); }
+.jb-editor-nav button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── advanced, collapsed ───────────────────────────────────────────────── */
+.jb-advanced {
+  margin: 4px 0 16px; padding: 0; border-top: 1px solid var(--hair);
+}
+.jb-advanced > summary {
+  padding: 11px 2px; cursor: pointer; font-size: 13px; font-weight: 500;
+  color: var(--ink); list-style: none; display: flex; gap: 4px;
+  align-items: baseline; white-space: nowrap; overflow: hidden;
+}
+.jb-advanced > summary::-webkit-details-marker { display: none; }
+/* A caret we control, so it can turn — the native marker cannot be animated
+   and sits at a different offset in every browser. */
+.jb-advanced > summary::before {
+  content: '›'; display: inline-block; font-size: 15px; color: var(--muted);
+  transition: transform .12s ease;
+}
+.jb-advanced[open] > summary::before { transform: rotate(90deg); }
+.jb-advanced > summary .jb-dim { font-weight: 400; text-overflow: ellipsis; overflow: hidden; }
+.jb-advanced[open] > summary .jb-dim { display: none; }
+.jb-advanced > .jb-grid { padding: 4px 0 2px 14px; }
+
+/* ── ENABLED ─────────────────────────────────────────────────────────────
+   The switch says whether the scheduler picks this job up.
+
+   Centred, not top-aligned like the rest of the row: `.jb-table td` is
+   vertical-align:top so a wrapping job name and its badges stack sensibly, but
+   a single control inherits that and floats up against the row's first line,
+   pinned to whatever height the tallest cell happens to be.
+
+   Sized like a control rather than a checkbox. A 20px switch in a 60px row
+   reads as an afterthought and is a small target for something that stops a
+   schedule. */
+.jb-row-toggle { vertical-align: middle !important; white-space: nowrap; }
+.jb-switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; }
+.jb-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.jb-switch-track {
+  position: relative; display: inline-block; flex: 0 0 auto;
+  width: 42px; height: 24px; border-radius: 999px;
+  background: var(--xeplr-border-strong, #b9b9b9);
+  transition: background 140ms ease;
+}
+.jb-switch-thumb {
+  position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  transition: transform 140ms ease;
+}
+.jb-switch input:checked + .jb-switch-track { background: var(--xeplr-success, #2e7d32); }
+.jb-switch input:checked + .jb-switch-track .jb-switch-thumb { transform: translateX(18px); }
+/* The focus ring has to land on the track — the input it belongs to is
+   invisible, and a control you can tab to but cannot see focused is worse than
+   one you cannot tab to at all. */
+.jb-switch input:focus-visible + .jb-switch-track {
+  outline: 2px solid var(--xeplr-accent, #4f5fd6); outline-offset: 2px;
+}
+.jb-switch input:disabled + .jb-switch-track { opacity: .4; }
+.jb-switch:has(input:disabled) { cursor: not-allowed; }
+
+/* THE WORD, next to the switch. Position and colour alone make the reader
+   decode the control before they can read the row; "Paused" is the fact they
+   came for. */
+.jb-switch-label { font-size: 13px; color: var(--xeplr-text-secondary, #666); }
+.jb-switch input:checked ~ .jb-switch-label { color: var(--xeplr-text, inherit); }
+
+/* ── ONE OCCURRENCE'S LOG, under its row in the history table ─────────────
+   Bounded height rather than growing the page: a long-running action writes
+   hundreds of lines, and an expansion that pushes the job list off-screen
+   makes the table it lives in unusable. */
+.jb-log-row > td { padding: 0 0 8px 0; }
+.jb-log { margin: 0; padding: 8px 12px; list-style: none; max-height: 288px; overflow-y: auto;
+  font-size: 13px; line-height: 1.5; }
+.jb-log-line { display: flex; gap: 12px; }
+.jb-log-at { flex: 0 0 auto; font-variant-numeric: tabular-nums; opacity: .6; }
+.jb-log-msg { flex: 1 1 auto; word-break: break-word; }
+.jb-log-line--warn .jb-log-msg { color: var(--xeplr-warning, #a15c00); }
+.jb-log-line--error .jb-log-msg { color: var(--xeplr-error, #b3261e); }
+/* A bare button wearing .jb-caret — the UA's own chrome removed so the disc
+   the caret draws is the whole control. */
+.jb-log-toggle { padding: 0; font: inherit; cursor: pointer; }
+.jb-log-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.jb-log-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── ONE LINE PER ROW ────────────────────────────────────────────────────
+   Every cell stays on its line and ellipsises rather than wrapping. A table
+   is scannable because the eye can run down a column; rows of different
+   heights break that, and three-line rows meant eight jobs filled a screen.
+
+   What used to be a second line is now a title: the job's description, and
+   the raw cron behind its plain-English phrase. Both are detail you want on
+   one row at a time, not on all of them at once. */
+.jb-table td, .jb-table th { white-space: nowrap; }
+.jb-table td { vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
+/* The name column is the one that can be arbitrarily long, so it is the one
+   allowed to take the slack — and to truncate when there isn't any. */
+.jb-cell-job { max-width: 0; width: 40%; }
+.jb-cell-job .jb-name { display: inline; margin-right: 8px; }
+.jb-table td .jb-pill { margin-top: 0; }
+
+/* ── THE EXPANDER ────────────────────────────────────────────────────────
+   A 15px caret with no affordance was invisible: nothing said the Last run
+   cell opens anything. It is now a bordered disc — a target you can see and
+   hit, that turns when the history is open. */
+.jb-caret {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  font-size: 15px; line-height: 1; color: var(--muted);
+  border: 1px solid var(--hair); border-radius: 50%;
+  background: var(--surface);
+  transition: transform .12s ease, border-color .12s ease, color .12s ease;
+}
+.jb-lastrun--btn:hover .jb-caret { color: var(--accent); border-color: var(--accent); }
+.jb-caret--open { transform: rotate(90deg); color: var(--accent); border-color: var(--accent); }
+
+/* ── ICON ACTIONS ────────────────────────────────────────────────────────
+   Square targets, the label on hover and to a screen reader. Three worded
+   buttons per row was a paragraph repeated down the page, in the widest
+   column of a table whose content is the job. */
+.jb-icon { display: block; }
+.jb-row-actions button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; margin-right: 6px;
+}
+.jb-row-actions button:last-child { margin-right: 0; }
+.jb-row-actions .jb-danger:hover:not(:disabled) {
+  color: var(--xeplr-error, #b3261e); border-color: currentColor; background: transparent;
+}
+
+/* The chevron is an SVG now, so centring the flex box actually centres the
+   mark — a rotated '>' glyph never sat straight, whatever the box did. */
+.jb-caret { padding: 0; }
+.jb-caret .jb-icon { transition: none; }

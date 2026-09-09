@@ -1,0 +1,10 @@
+.csf-field { display: grid; gap: 6px; margin-bottom: 14px; }
+.csf-field label { font-size: 13px; color: var(--muted); }
+.csf-field select, .csf-field input {
+  width: 100%; padding: 9px 11px; font: inherit; font-size: 14px;
+  color: var(--xeplr-input-text); background: var(--xeplr-input-bg);
+  border: 1px solid var(--xeplr-input-border); border-radius: 8px;
+}
+.csf-field select:focus, .csf-field input:focus { outline: none; border-color: var(--accent); }
+.csf-cron { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.csf-help { font-size: 12px; color: var(--muted); }

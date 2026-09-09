@@ -1,0 +1,10 @@
+/* Standalone chrome only. The jobs screen brings its own styles (Jobs.css) —
+   nothing here is loaded when a host embeds the package, because a host
+   imports src/index.js and never main.jsx. */
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+.jobs-standalone-header {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--xeplr-border, #e5e7eb);
+}
+.jobs-standalone-shell main { padding: 20px; }
