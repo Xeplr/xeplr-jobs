@@ -1,6 +1,6 @@
 {
   "name": "@xeplr/jobs",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Scheduled + manual action runner — cron picks jobs and hands them off to @xeplr/actions",
   "main": "index.js",
   "files": [
