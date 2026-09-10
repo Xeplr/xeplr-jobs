@@ -229,6 +229,15 @@ async function start(config) {
 
   const port = config.port || process.env.JOBS_PORT || 19003;
   const app = createApp(port, 'xeplr-jobs', {
+    // Passed straight through so a host decides, and NOT defaulted here —
+    // undefined means createApp's own default, which is gated via AUTH_URL.
+    // That is the right answer for this server: it exposes job CRUD and a
+    // manual "run this now" trigger, so an unauthenticated one lets anybody
+    // execute registered actions on demand.
+    //
+    // A deployment that genuinely wants it open (a private network, a test
+    // rig) passes auth: false and says so where anyone can read it.
+    auth: config.auth,
     corsOptions: config.corsOptions,
     middleware: config.middleware,
     routes: { '/': router(config.routerOptions) }

@@ -38,7 +38,7 @@
   },
   "dependencies": {
     "@xeplr/actions": "^1.1.4",
-    "@xeplr/base-apis": "^1.0.0",
+    "@xeplr/base-apis": "^2.0.0",
     "@xeplr/db": "^1.0.0",
     "@xeplr/schema-handler": "^1.0.0",
     "@xeplr/utils": "^1.0.0",
