@@ -48,27 +48,21 @@ jobs:
           fi
           # Mirrors the package's own test script, but adds coverage and lcov.
           #
-          # The file list is DISCOVERED rather than hardcoded to test/*.test.js.
-          # The tests in this repo live in ui/test/ and are .mjs, so the fixed
-          # glob matched nothing — and "no files" is not an error node --test
-          # reports in a way this step would have failed on. It would have gone
-          # on reporting a green build over zero tests.
-          FILES=$(git ls-files | grep -E '(^|/)test/.*\.test\.(js|mjs|cjs)
-
-      - name: Upload coverage to Codecov
-        if: hashFiles('coverage.info') != ''
-        uses: codecov/codecov-action@v4
-        with:
-          files: coverage.info
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
- || true)
+          # The file list is DISCOVERED, not hardcoded to test/*.test.js. The
+          # tests in this repo live in ui/test/ and are .mjs, so the fixed glob
+          # matched nothing — and node --test finding no files is not something
+          # this step would have failed on. It would have gone on reporting a
+          # green build over zero tests.
+          FILES=$(git ls-files | grep -E '(^|/)test/[^/]+[.]test[.](js|mjs|cjs)$' || true)
           if [ -z "$FILES" ]; then
             echo "::warning::A test script exists but no test files were found — nothing verified."
             exit 0
           fi
           echo "running: $FILES"
-          node --test --experimental-test-coverage \
+          # A suite that needs a node flag declares it on its own first lines
+          # (// @flags: --expose-gc). One process runs them all, so union them.
+          FLAGS=$(for f in $FILES; do sed -n '1,5p' "$f" | sed -n 's|.*@flags:[[:space:]]*||p'; done | tr ' ' '\n' | sort -u | tr '\n' ' ')
+          node --test $FLAGS --experimental-test-coverage \
                --test-reporter=lcov --test-reporter-destination=coverage.info \
                --test-reporter=spec --test-reporter-destination=stdout \
                $FILES
