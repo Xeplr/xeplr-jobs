@@ -1,7 +1,7 @@
 {
   "name": "@xeplr/jobs",
   "version": "2.0.11",
-  "description": "Scheduled + manual action runner — cron picks jobs and hands them off to @xeplr/actions",
+  "description": "Scheduled + manual action runner \u2014 cron picks jobs and hands them off to @xeplr/actions",
   "main": "index.js",
   "files": [
     "index.js",
@@ -47,5 +47,8 @@
   },
   "peerDependencies": {
     "express": "^4.0.0 || ^5.0.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
   }
 }

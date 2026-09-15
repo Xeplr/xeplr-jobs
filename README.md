@@ -159,8 +159,8 @@ Relative to where `router()` is mounted. Responses use xeplr's `{ code, message,
 | `POST /jobs/delete` | Soft-delete by ids (`genericRoute`). |
 | `GET /jobs/:id/occurrences?limit=` | This job's runs, newest first. Default 50, max 500. |
 | `GET /jobs/active` | Occurrences with `status = 'running'`, oldest first: `{ id, jobId, jobName, status, startedAt, retryCount, progress }`. For polling. |
-| `POST /jobs/:id/trigger` | Run now. Body `{ inputs?, callbackUrl? }`. Answers at once with `{ occurrenceId, jobId, status: 'running' }`; **409 `busy`** if the job is already running; 404 if not found. |
-| `POST /jobs/run` | Run several now. Body `{ jobIds: [...], inputs?: { <jobId>: {...} } }`. Returns `{ triggered, missing }`; 400 without `jobIds`. |
+| `POST /jobs/:id/trigger` | Run now. Body `{ inputs?, callbackUrl? }` — `inputs` may only replace the keys in `overridableInputs` (default `window`); any other key answers **400**, naming it. Answers at once with `{ occurrenceId, jobId, status: 'running' }`; **409 `busy`** if the job is already running; 404 if not found. |
+| `POST /jobs/run` | Run several now. Body `{ jobIds: [...], inputs?: { <jobId>: {...} } }`, each checked like `trigger`'s. Returns `{ triggered, missing }`; 400 without `jobIds` or with a key that may not be overridden. |
 | `POST /jobs/:id/pause` | `status = 'pause'`. |
 | `POST /jobs/:id/resume` | `status = 'ready'`. |
 | `GET /job-occurrences` | List occurrences (`genericRoute`). |
@@ -267,6 +267,7 @@ Reads `JOBS_CONFIG`, `JOBS_PORT`, `DB_JOBS`, `JOBS_MTS`; calls `start()`. Exits 
 | The picker and reaper query **unscoped**; each run executes inside **the job's own** `mtId1–4` context (`runWithMt`). | A timer has no request context, and a scoped query would find nothing (`where 1 = 0`). Running in the job's context scopes the occurrence rows and everything the action reads or writes. |
 | `spawnProgram` and `dbMove` are never offered by default. | `spawnProgram` runs arbitrary executables — on a cron that is a remote shell. `dbMove` needs connection objects, a column mapping and a window that no generic form can collect; register a host action that takes a saved move id instead. |
 | **Saved connections, never credentials, in a job** — see below. | Job inputs reach the browser and are copied into every occurrence row. |
+| **A request may override only `overridableInputs`** (`router({ overridableInputs })`, default `['window']`). `sql`, `where`, `table`, `procedure`, connections and the rest stay as the job was saved. | A job's inputs include its SQL and its connection. Letting any caller of `/trigger` replace them turns "run this job" into "run this SQL there". Server code calling `executeJob` is not limited. |
 | One lock per job (`running`). A manual trigger on a running job answers **409 busy** — it is a refusal, not a queue. A race lost after that check is recorded as `skipped` and reported to the callback. | A caller told "triggered" would carry on as if a second run had started. |
 | **Retries are opt-in** (`retryLimit`, default 0), and only a *returned* failure is retried, not a thrown framework error. All attempts share one occurrence row and one `system` object. | Silently re-running something that moves data is worse than leaving it failed and visible; a retry is the same due slot, not a new run. |
 | **`timedOut` is not `failed`.** The reaper marks runs still `running` past `timeoutMinutes` (job, then scheduler, then 30), releases the lock and moves `nextRunAt` on. No heartbeat. | `running` is a lock with no expiry: a SIGKILLed or OOM-killed worker would leave the job locked forever. `failed` means the process reported an error; `timedOut` means nobody came back. The user knows how long their job takes; the system does not. |
