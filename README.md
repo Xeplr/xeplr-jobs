@@ -65,6 +65,7 @@ AUTH_URL=http://localhost:19141 npx xeplr-jobs-server
 |---|---|
 | `init(config)` | Register tenancy (`mts`), set up the executor, register the default actions, connect to the jobs database (created if missing). Resolves to the knex connection. Call once, first. |
 | `router(options?)` | Express router with the [routes](#routes). `options.auth`: one middleware, or `{ list, getById, save, delete }`. |
+| `trigger(jobId, { inputs?, callbackUrl?, chain? }, options?)` | Start one run in-process, under the same input rule as `POST /jobs/:id/trigger`. Resolves at once to `{ occurrenceId, jobId, status: 'running' }`; throws with `err.code` `NOT_FOUND`, `BUSY` or `INPUTS_REFUSED`. Call it inside the job's tenant context. `options`: `overridableInputs`, `triggerType`. |
 | `startScheduler(config?)` | Start the picker/reaper loop. Warns if tenancy is not registered. Returns `{ stop }`. Throws if already started. |
 | `stopScheduler()` | Stop the loop and remove its SIGTERM/SIGINT handlers. |
 | `start(config?)` | `init()`, then an Express server from `@xeplr/base-apis` with `router()` at `/`, then `startScheduler()` unless `startScheduler: false`. Resolves to the app. |
@@ -90,6 +91,7 @@ AUTH_URL=http://localhost:19141 npx xeplr-jobs-server
 | `maxConcurrent` | Executor concurrency cap. Default 20. |
 | `logger` | Object with `info`, `important`, `error`, `critical`. Default: `@xeplr/logs` `createLogger('jobs')`, else console. |
 | `defaultActions` | `false` to skip `registerDefaultActions()`. |
+| `onFinish` | `async ({ status, error, output, occurrence }) => …`, called for **every** run that ends (success, failure, `skipped`, `timedOut`, `interrupted`), cron runs included, inside the run's tenant context. The same envelope a [callback](#callbacks) gets. This is how a host's workflow engine follows one job with the next. Errors are logged and never affect the run. |
 
 ### `startScheduler(config)`
 
@@ -118,6 +120,7 @@ AUTH_URL=http://localhost:19141 npx xeplr-jobs-server
 | `retryLimit` | Extra attempts after a failed one. Default 0. |
 | `timeoutMinutes` | Reaper tolerance for this job. `NULL` = the scheduler's default. |
 | `incrementalMode` | `NULL` (not incremental) or `period`. `watermark` is accepted by the model but **refused at run time** (not implemented). |
+| `acceptsInputs` | Input names a trigger may fill on this job, on top of `window`: what a chain may pass in, e.g. `["region"]`. A name containing `connection` is refused on save and at trigger time. `NULL` = only `window`. |
 
 Maintained by the package: `running` (the per-job lock), `nextRunAt` (computed from `schedule` on insert when not given, and after every cron run), `coveredTo` (end of the last successfully covered window), plus `id`, `isActive`, `mtId1–4` and the audit columns.
 
@@ -134,7 +137,7 @@ A job is picked when `status = 'ready' AND running = false AND schedule IS NOT N
 | `timedOut` | reaper | Still `running` past the tolerance — the worker never reported. If it later finishes, `lateFinish` records `{ status, durationMs, ranForMinutes, finishedAt, note }` and the status stays `timedOut`. |
 | `interrupted` | shutdown handler | The process received SIGTERM/SIGINT while the run was in flight. |
 
-Also on each occurrence: `input` (the merged, **unresolved** inputs the run used), `retryCount`, `triggeredBy` (`{ type: 'cron' | 'manual' }`), `durationMs`, `startedAt`, `endedAt`, `callbackUrl`.
+Also on each occurrence: `input` (the merged, **unresolved** inputs the run used), `retryCount`, `triggeredBy` (`{ type: 'cron' | 'manual' | … }`), `durationMs`, `startedAt`, `endedAt`, `callbackUrl`, `chain` (what the trigger handed in to travel with the run, returned untouched when it ends).
 
 ### What the action receives
 
@@ -159,7 +162,7 @@ Relative to where `router()` is mounted. Responses use xeplr's `{ code, message,
 | `POST /jobs/delete` | Soft-delete by ids (`genericRoute`). |
 | `GET /jobs/:id/occurrences?limit=` | This job's runs, newest first. Default 50, max 500. |
 | `GET /jobs/active` | Occurrences with `status = 'running'`, oldest first: `{ id, jobId, jobName, status, startedAt, retryCount, progress }`. For polling. |
-| `POST /jobs/:id/trigger` | Run now. Body `{ inputs?, callbackUrl? }` — `inputs` may only replace the keys in `overridableInputs` (default `window`); any other key answers **400**, naming it. Answers at once with `{ occurrenceId, jobId, status: 'running' }`; **409 `busy`** if the job is already running; 404 if not found. |
+| `POST /jobs/:id/trigger` | Run now. Body `{ inputs?, callbackUrl?, chain? }` — `inputs` may only replace the keys in `overridableInputs` (default `window`) plus the job's own `acceptsInputs`; any other key answers **400**, naming it. Answers at once with `{ occurrenceId, jobId, status: 'running' }`; **409 `busy`** if the job is already running; 404 if not found. |
 | `POST /jobs/run` | Run several now. Body `{ jobIds: [...], inputs?: { <jobId>: {...} } }`, each checked like `trigger`'s. Returns `{ triggered, missing }`; 400 without `jobIds` or with a key that may not be overridden. |
 | `POST /jobs/:id/pause` | `status = 'pause'`. |
 | `POST /jobs/:id/resume` | `status = 'ready'`. |
@@ -193,15 +196,18 @@ Menus: `Jobs`, `Job Runs` (`jobs:view`). `0002` grants "List active job runs" to
 
 ## Callbacks
 
-Pass `callbackUrl` to `POST /jobs/:id/trigger` and the outcome is POSTed there when the run ends in **any** terminal state — success, failure, `skipped` (the lock was taken between the busy check and the run), timeout (from the reaper, even if the worker died) or interruption. A 409 `busy` answer is the refusal itself; no callback follows it.
+Pass `callbackUrl` to `POST /jobs/:id/trigger` (or `trigger()`) and the outcome is POSTed there when the run ends in **any** terminal state — success, failure, `skipped` (the lock was taken between the busy check and the run), timeout (from the reaper, even if the worker died) or interruption. A 409 `busy` answer is the refusal itself; no callback follows it.
 
 ```json
 {
   "status": "success | failed",
   "error": null,
-  "output": { "status": "success", "jobId": "…", "occurrenceId": "…", "startedAt": "…", "endedAt": "…", "durationMs": 1234, "output": {}, "error": null }
+  "output": { "status": "success", "jobId": "…", "occurrenceId": "…", "startedAt": "…", "endedAt": "…", "durationMs": 1234,
+              "output": {}, "error": null, "window": { "from": "…", "to": "…" }, "chain": null }
 }
 ```
+
+`output.window` is the period the run was given (its computed incremental window, or the trigger's), read from the run's own inputs, so every action reports it. `output.chain` is what the trigger passed as `chain`. The host's `onFinish` hook receives the same envelope for every run, with or without a `callbackUrl`.
 
 Top-level `status` is `success` only when the occurrence status is `success`; otherwise `failed`, with the occurrence's `error` or `{ name: 'JobNotCompleted' }`. Up to 3 attempts, 10 s timeout each, waiting 2 s then 4 s. A 4xx answer is not retried. Final failure is logged at error level.
 
@@ -234,6 +240,7 @@ Knex migrations in `migrations/`, run against the jobs database:
 | `0006_jobs_covered_to` | `coveredTo`, `incrementalMode`. |
 | `0007_occurrence_progress` | `jobOccurrences.progress`. |
 | `0008_occurrence_callback` | `jobOccurrences.callbackUrl`. |
+| `0009_job_chains` | `jobs.acceptsInputs`, `jobOccurrences.chain`. |
 
 ### `xeplr-jobs-migrate`
 
@@ -267,7 +274,8 @@ Reads `JOBS_CONFIG`, `JOBS_PORT`, `DB_JOBS`, `JOBS_MTS`; calls `start()`. Exits 
 | The picker and reaper query **unscoped**; each run executes inside **the job's own** `mtId1–4` context (`runWithMt`). | A timer has no request context, and a scoped query would find nothing (`where 1 = 0`). Running in the job's context scopes the occurrence rows and everything the action reads or writes. |
 | `spawnProgram` and `dbMove` are never offered by default. | `spawnProgram` runs arbitrary executables — on a cron that is a remote shell. `dbMove` needs connection objects, a column mapping and a window that no generic form can collect; register a host action that takes a saved move id instead. |
 | **Saved connections, never credentials, in a job** — see below. | Job inputs reach the browser and are copied into every occurrence row. |
-| **A request may override only `overridableInputs`** (`router({ overridableInputs })`, default `['window']`). `sql`, `where`, `table`, `procedure`, connections and the rest stay as the job was saved. | A job's inputs include its SQL and its connection. Letting any caller of `/trigger` replace them turns "run this job" into "run this SQL there". Server code calling `executeJob` is not limited. |
+| **A request may override only `overridableInputs`** (`router({ overridableInputs })`, default `['window']`) **plus the job's own `acceptsInputs`**. `sql`, `where`, `table`, `procedure`, connections and the rest stay as the job was saved. The router and `trigger()` share one function (`lib/trigger.js`). | A job's inputs include its SQL and its connection. Letting any caller of `/trigger` replace them turns "run this job" into "run this SQL there". Only the job's author can widen the list, and never to a connection. Server code calling `executeJob` is not limited. |
+| **Jobs never start each other.** A run reports how it ended (`onFinish`, `callbackUrl`) and carries `chain` untouched; deciding what runs next is the workflow engine's job. | One place connects jobs, screens and everything else, so there is one rule for hand-offs, not one per package. |
 | One lock per job (`running`). A manual trigger on a running job answers **409 busy** — it is a refusal, not a queue. A race lost after that check is recorded as `skipped` and reported to the callback. | A caller told "triggered" would carry on as if a second run had started. |
 | **Retries are opt-in** (`retryLimit`, default 0), and only a *returned* failure is retried, not a thrown framework error. All attempts share one occurrence row and one `system` object. | Silently re-running something that moves data is worse than leaving it failed and visible; a retry is the same due slot, not a new run. |
 | **`timedOut` is not `failed`.** The reaper marks runs still `running` past `timeoutMinutes` (job, then scheduler, then 30), releases the lock and moves `nextRunAt` on. No heartbeat. | `running` is a lock with no expiry: a SIGKILLed or OOM-killed worker would leave the job locked forever. `failed` means the process reported an error; `timedOut` means nobody came back. The user knows how long their job takes; the system does not. |
@@ -296,7 +304,12 @@ The resolver gets the id and `{ field, inputs }`, so it can read companion ids s
 
 ## Tests
 
-There is no test suite yet: `package.json` has no `test` script and the repo has no test files. CI (`.github/workflows/ci.yml`) reports "No test script — nothing verified."
+```sh
+npm test
+JOBS_TEST_PG='{"host":"localhost","port":5432,"user":"postgres","password":"…"}' npm test
+```
+
+`test/triggerInputs.test.js` checks the input rule through the router. `test/chains.test.js` runs on a real Postgres (a scratch database, created and dropped) and is skipped without `JOBS_TEST_PG`: every way a run ends reaches `onFinish` with its window and chain, cron runs included; a trigger fills only `window` and accepted inputs; a job cannot accept a connection; a callback URL receives the same envelope.
 
 ## License
 

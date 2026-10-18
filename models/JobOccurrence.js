@@ -36,6 +36,8 @@ class JobOccurrence extends BaseModel {
         // Where to POST this occurrence's outcome when it reaches a terminal
         // state. Null for a run nobody is waiting on. See migrations/0008.
         callbackUrl: { type: ['string', 'null'] },
+        // What the trigger handed in to travel with this run. See migrations/0009.
+        chain: { type: ['object', 'null'] },
         retryCount: { type: 'integer' },
         triggeredBy: { type: 'object' },
         durationMs: { type: ['integer', 'null'] },
