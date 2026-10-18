@@ -49,6 +49,9 @@ class Job extends BaseModel {
         // null = not incremental. See migrations/0006 for why there is no
         // separate 'full'.
         incrementalMode: { type: ['string', 'null'], enum: [null, 'period', 'watermark'] },
+        // Input keys a trigger (a chain, above all) may fill on this job, beyond
+        // the router's overridableInputs. See migrations/0009.
+        acceptsInputs: { type: ['array', 'null'], items: { type: 'string' } },
         isActive: { type: 'boolean' },
         recordCreatedDate: { type: ['string', 'null'] },
         recordModifiedDate: { type: ['string', 'null'] },
@@ -56,6 +59,16 @@ class Job extends BaseModel {
         recordModifiedBy: { type: ['string', 'null'], maxLength: 25 }
       }
     };
+  }
+
+  // acceptsInputs is the one field that widens what a caller may change, so it
+  // is checked on every write rather than trusted from the form.
+  $beforeValidate(jsonSchema, json, opt) {
+    var problems = require('../lib/trigger').acceptsInputsProblems(json.acceptsInputs);
+    if (problems.length) {
+      throw this.constructor.createValidationError({ type: 'ModelValidation', message: problems.join(' ') });
+    }
+    return super.$beforeValidate ? super.$beforeValidate(jsonSchema, json, opt) : jsonSchema;
   }
 
   $beforeInsert() {

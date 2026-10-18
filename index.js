@@ -4,6 +4,8 @@ const createApp = require('@xeplr/base-apis/express');
 const createJobRouter = require('./lib/jobRouter');
 const scheduler = require('./lib/scheduler');
 const { initExecutorState } = require('./lib/execute');
+const { setOnFinish } = require('./lib/notify');
+const triggerLib = require('./lib/trigger');
 const models = require('./models');
 const actions = require('@xeplr/actions');
 
@@ -117,6 +119,13 @@ async function init(config) {
 
   if (config.defaultActions !== false) registerDefaultActions(config.logger);
 
+  // onFinish: async ({ status, error, output, occurrence }) — told about EVERY
+  // run that ends, cron runs included, in the run's own tenant context. The
+  // envelope is the one a callbackUrl receives (output.window, output.chain).
+  // How a host's workflow engine follows a job with the next one; see
+  // lib/notify.js.
+  setOnFinish(config.onFinish);
+
   // A SECONDARY connection, with jobs' own models bound to it — never the
   // process's global Objection binding. See lib/db.js for why that matters
   // the moment jobs is embedded in a host app.
@@ -140,6 +149,24 @@ function warnIfUnscoped(logger) {
     return false;
   }
   return true;
+}
+
+/**
+ * Start one run of a saved job from inside this process — what a host's
+ * workflow engine calls to start the next job of a chain, with no HTTP round
+ * trip and no credentials to send.
+ *
+ * The SAME rule as POST /jobs/:id/trigger (lib/trigger.js): `inputs` may fill
+ * only `window` and the keys the job itself lists in acceptsInputs. Runs in
+ * the caller's tenant context, so call it inside the job's tenant.
+ *
+ *   trigger(jobId, { inputs, callbackUrl, chain }, { overridableInputs, triggerType })
+ *     → { occurrenceId, jobId, status: 'running' }
+ *
+ * Throws with err.code NOT_FOUND | BUSY | INPUTS_REFUSED.
+ */
+function trigger(jobId, body, options) {
+  return triggerLib.triggerJob(jobsDb.boundModels(), jobId, body, options);
 }
 
 function router(options) {
@@ -272,6 +299,7 @@ module.exports = {
   requiredEnv,
   init,
   router,
+  trigger,
   start,
   models,
   // The BOUND models — Job.bindKnex(conn()) / JobOccurrence.bindKnex(conn()),
