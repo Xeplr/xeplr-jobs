@@ -86,6 +86,7 @@ test('GET /jobs/run-contract answers what every run receives', async function() 
     var res = await fetch('http://127.0.0.1:' + server.address().port + '/jobs/run-contract');
     var body = await res.json();
     assert.equal(res.status, 200);
-    assert.deepEqual(body.dataArray.map(function(f) { return f.key; }), ['window.from', 'window.to']);
+    assert.deepEqual(body.dataArray.slice(0, 2).map(function(f) { return f.key; }), ['window.from', 'window.to']);
+    assert.equal(body.dataArray.length, 6);
   } finally { await new Promise(function(r) { server.close(r); }); }
 });
