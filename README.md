@@ -143,7 +143,9 @@ Also on each occurrence: `input` (the merged, **unresolved** inputs the run used
 
 A run covers a period, its **window**: `{ from, to }`, half-open. It comes from the job's own schedule (`incrementalMode: 'period'`: from where the last successful run stopped, to now) or from whoever triggered it, above all the job before it in a chain, which hands over the period it ran for. Either can be absent.
 
-That shape is a fixed contract (`lib/runContract.js`, `GET /jobs/run-contract`), so **any input can bind to it**: `{window.from}` and `{window.to}` are replaced with the run's dates just before the action runs. A string that is only the binding gets the value itself (`null` with no window); one inside text gets it as text. Nothing else binds. A procedure's dates, for example:
+A run started by the job before it also receives **that job's two ranges**, from what every job reports when it ends: `previous.given` (the range it was given) and `previous.used` (the range its action reports it actually covered). The workflow engine passes them in the trigger's `chain.previous`.
+
+That shape is a fixed contract (`lib/runContract.js`, `GET /jobs/run-contract`: `[{ key, group, label, description }]`), so **any input can bind to it**: `{window.from}`, `{window.to}`, `{previous.given.from}`, `{previous.given.to}`, `{previous.used.from}`, `{previous.used.to}` are replaced with the run's values just before the action runs. A string that is only the binding gets the value itself (`null` with no window); one inside text gets it as text. Nothing else binds. A procedure's dates, for example:
 
 ```json
 { "params": [ { "name": "startDate", "value": "{window.from}" },
@@ -184,7 +186,7 @@ Relative to where `router()` is mounted. Responses use xeplr's `{ code, message,
 | `GET /job-occurrences/:id` | One occurrence. |
 | `POST /job-occurrences/save`, `POST /job-occurrences/delete` | `genericRoute` save / soft delete. |
 | `GET /actions` | The action registry: `[{ name, description, inputSchema, outputSchema, requires }]`. |
-| `GET /jobs/run-contract` | What every run receives, as names an input binds to: `[{ key: 'window.from', label, description }, { key: 'window.to', … }]`. For a form's dropdowns. |
+| `GET /jobs/run-contract` | What every run receives, as names an input binds to: `[{ key: 'window.from', group, label, description }, …]` — this run's window and the job before's given and used ranges. For a form's dropdowns. |
 
 **Auth on the router.** `genericRoute` paths get `options.auth` as given (one middleware, or per operation). Every other route above — including the `GET`s — is gated by the single middleware, or by `auth.save` when an object is passed; an object without `save` leaves them ungated.
 

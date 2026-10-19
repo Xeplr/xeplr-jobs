@@ -262,8 +262,25 @@ test('a window from outside fills the dates of the job\'s own window, keeping it
   assert.deepEqual(seen, { fromParam: 'startDate', toParam: 'endDate', from: 'a', to: 'b' });
 });
 
-test('the run contract names exactly the window\'s start and end', function() {
+test('the job before\'s given and used ranges bind too', { skip: skip }, async function() {
+  var seen;
+  jobs.registerAction({ name: 'chain-prev', inputSchema: [{ name: 'params', type: 'array' }],
+    execute: async function(ctx) { seen = ctx.input.params; return {}; } });
+  var job = await saveJob({ name: 'After a load', actionName: 'chain-prev', inputs: { params: [
+    '{previous.given.from}', '{previous.given.to}', '{previous.used.from}', '{previous.used.to}', '{window.from}'
+  ] } });
+  var started = await jobs.trigger(job.id, {
+    inputs: { window: { from: 'w1', to: 'w2' } },
+    chain: { previous: { given: { from: 'g1', to: 'g2' }, used: { column: 'postedAt', from: 'u1', to: null } } }
+  });
+  await reportFor(started.occurrenceId);
+  assert.deepEqual(seen, ['g1', 'g2', 'u1', null, 'w1']);
+});
+
+test('the run contract names this run\'s window and the job before\'s two ranges', function() {
   var c = require('../lib/runContract');
-  assert.deepEqual(c.CONTRACT.map(function(f) { return f.key; }), ['window.from', 'window.to']);
+  assert.deepEqual(c.CONTRACT.map(function(f) { return f.key; }), ['window.from', 'window.to',
+    'previous.given.from', 'previous.given.to', 'previous.used.from', 'previous.used.to']);
+  assert.ok(c.CONTRACT.every(function(f) { return f.group && f.label; }));
   assert.deepEqual(c.bindRunValues(['{window.from}', 7, null, '{window.other}'], { from: 1 }), [1, 7, null, '{window.other}']);
 });
