@@ -225,3 +225,45 @@ test('acceptsInputs is checked as a list of plain names', function() {
   assert.match(problems(['', 3])[0], /blank or non-text/);
   assert.match(problems(['dbConnection'])[0], /cannot be accepted/);
 });
+
+test('{window.from} / {window.to} in any input get the run\'s dates', { skip: skip }, async function() {
+  var seen;
+  jobs.registerAction({ name: 'chain-params', inputSchema: [{ name: 'params', type: 'array' }, { name: 'window', type: 'object' }],
+    execute: async function(ctx) { seen = ctx.input; return {}; } });
+  var job = await saveJob({ name: 'Proc', actionName: 'chain-params', inputs: { params: [
+    { name: 'startDate', value: '{window.from}' }, { name: 'endDate', value: '{window.to}' }, { name: 'note', value: 'up to {window.to}' }, { name: 'region', value: 'north' }
+  ] } });
+  var window = { from: '2026-09-01T00:00:00.000Z', to: '2026-10-01T00:00:00.000Z' };
+  var started = await jobs.trigger(job.id, { inputs: { window: window } });
+  await reportFor(started.occurrenceId);
+  assert.deepEqual(seen.params, [
+    { name: 'startDate', value: window.from }, { name: 'endDate', value: window.to },
+    { name: 'note', value: 'up to ' + window.to }, { name: 'region', value: 'north' }
+  ]);
+  assert.equal(seen.window, undefined, 'a job that binds the window is not also handed it as its window input');
+  var { JobOccurrence } = jobs.boundModels();
+  var occ = await JobOccurrence.query().findById(started.occurrenceId);
+  assert.equal(occ.input.params[0].value, window.from, 'the record shows the dates the run used');
+
+  // No window at all: the bound parameters are passed empty, not as text.
+  var bare = await jobs.trigger(job.id, {});
+  await reportFor(bare.occurrenceId);
+  assert.equal(seen.params[0].value, null);
+  assert.equal(seen.params[2].value, 'up to ');
+});
+
+test('a window from outside fills the dates of the job\'s own window, keeping its setup', { skip: skip }, async function() {
+  var seen;
+  jobs.registerAction({ name: 'chain-proc-window', inputSchema: [{ name: 'window', type: 'object' }],
+    execute: async function(ctx) { seen = ctx.input.window; return {}; } });
+  var job = await saveJob({ name: 'Old-style proc', actionName: 'chain-proc-window', inputs: { window: { fromParam: 'startDate', toParam: 'endDate' } } });
+  var started = await jobs.trigger(job.id, { inputs: { window: { from: 'a', to: 'b' } } });
+  await reportFor(started.occurrenceId);
+  assert.deepEqual(seen, { fromParam: 'startDate', toParam: 'endDate', from: 'a', to: 'b' });
+});
+
+test('the run contract names exactly the window\'s start and end', function() {
+  var c = require('../lib/runContract');
+  assert.deepEqual(c.CONTRACT.map(function(f) { return f.key; }), ['window.from', 'window.to']);
+  assert.deepEqual(c.bindRunValues(['{window.from}', 7, null, '{window.other}'], { from: 1 }), [1, 7, null, '{window.other}']);
+});

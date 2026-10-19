@@ -139,6 +139,20 @@ A job is picked when `status = 'ready' AND running = false AND schedule IS NOT N
 
 Also on each occurrence: `input` (the merged, **unresolved** inputs the run used), `retryCount`, `triggeredBy` (`{ type: 'cron' | 'manual' | … }`), `durationMs`, `startedAt`, `endedAt`, `callbackUrl`, `chain` (what the trigger handed in to travel with the run, returned untouched when it ends).
 
+### What every run receives: the window
+
+A run covers a period, its **window**: `{ from, to }`, half-open. It comes from the job's own schedule (`incrementalMode: 'period'`: from where the last successful run stopped, to now) or from whoever triggered it, above all the job before it in a chain, which hands over the period it ran for. Either can be absent.
+
+That shape is a fixed contract (`lib/runContract.js`, `GET /jobs/run-contract`), so **any input can bind to it**: `{window.from}` and `{window.to}` are replaced with the run's dates just before the action runs. A string that is only the binding gets the value itself (`null` with no window); one inside text gets it as text. Nothing else binds. A procedure's dates, for example:
+
+```json
+{ "params": [ { "name": "startDate", "value": "{window.from}" },
+              { "name": "endDate",   "value": "{window.to}" },
+              { "name": "region",    "value": "north" } ] }
+```
+
+A job whose inputs bind the window this way is not also handed it as its action's `window` input (unless its author set one), so a procedure that refuses a window it has no parameter names for runs normally. A window passed in by a trigger fills the dates of the job's **own** `window` input when it has one, keeping the rest of what its author set (`fromParam`, `column`…) rather than replacing it.
+
 ### What the action receives
 
 ```js
@@ -170,6 +184,7 @@ Relative to where `router()` is mounted. Responses use xeplr's `{ code, message,
 | `GET /job-occurrences/:id` | One occurrence. |
 | `POST /job-occurrences/save`, `POST /job-occurrences/delete` | `genericRoute` save / soft delete. |
 | `GET /actions` | The action registry: `[{ name, description, inputSchema, outputSchema, requires }]`. |
+| `GET /jobs/run-contract` | What every run receives, as names an input binds to: `[{ key: 'window.from', label, description }, { key: 'window.to', … }]`. For a form's dropdowns. |
 
 **Auth on the router.** `genericRoute` paths get `options.auth` as given (one middleware, or per operation). Every other route above — including the `GET`s — is gated by the single middleware, or by `auth.save` when an object is passed; an object without `save` leaves them ungated.
 
@@ -187,12 +202,12 @@ Idempotent inserts into `roles`, `menus`, `apis`, `apisRolesMapping`, `menuRoles
 
 | api group | apis | granted to |
 |---|---|---|
-| `jobs:view` | List jobs, Get job, List job occurrences, Get job occurrence, List actions, List active job runs | Super Admin, CompanyAdmin, Creator, Viewer |
+| `jobs:view` | List jobs, Get job, List job occurrences, Get job occurrence, List actions, List active job runs, Get job run contract | Super Admin, CompanyAdmin, Creator, Viewer |
 | `jobs:create` | Save job, Delete job | Super Admin, CompanyAdmin, Creator |
 | `jobs:run` | Trigger job, Batch trigger jobs | Super Admin, CompanyAdmin, Creator |
 | `jobs:manage` | Pause job, Resume job | Super Admin, CompanyAdmin |
 
-Menus: `Jobs`, `Job Runs` (`jobs:view`). `0002` grants "List active job runs" to every role that already holds a `jobs:view` api. The router itself does not check these names — enforcing them is the auth gate's job.
+Menus: `Jobs`, `Job Runs` (`jobs:view`). `0003` adds "Get job run contract" the same way. `0002` grants "List active job runs" to every role that already holds a `jobs:view` api. The router itself does not check these names — enforcing them is the auth gate's job.
 
 ## Callbacks
 
