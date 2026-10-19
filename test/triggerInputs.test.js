@@ -76,3 +76,16 @@ test('an app can widen the list, knowingly', async function() {
   assert.deepEqual(createJobRouter.refusedInputs(['not', 'an object'], ['window']), []);
   assert.deepEqual(createJobRouter.DEFAULT_OVERRIDABLE_INPUTS, ['window']);
 });
+
+test('GET /jobs/run-contract answers what every run receives', async function() {
+  var app = express();
+  app.use(createJobRouter({ models: stubModels(), auth: function(req, res, next) { next(); } }));
+  var server = http.createServer(app);
+  await new Promise(function(r) { server.listen(0, r); });
+  try {
+    var res = await fetch('http://127.0.0.1:' + server.address().port + '/jobs/run-contract');
+    var body = await res.json();
+    assert.equal(res.status, 200);
+    assert.deepEqual(body.dataArray.map(function(f) { return f.key; }), ['window.from', 'window.to']);
+  } finally { await new Promise(function(r) { server.close(r); }); }
+});

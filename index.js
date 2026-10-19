@@ -300,6 +300,9 @@ module.exports = {
   init,
   router,
   trigger,
+  // What every run receives — its window's start and end — and the binding
+  // that fills `{window.from}` / `{window.to}` in a job's inputs.
+  runContract: require('./lib/runContract'),
   start,
   models,
   // The BOUND models — Job.bindKnex(conn()) / JobOccurrence.bindKnex(conn()),
