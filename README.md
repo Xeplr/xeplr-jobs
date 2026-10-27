@@ -310,6 +310,8 @@ Reads `JOBS_CONFIG`, `JOBS_PORT`, `DB_JOBS`, `JOBS_MTS`; calls `start()`. Exits 
 
 ### Saved connections, never credentials in a job
 
+The rule itself (the field names, the refusals) is [`@xeplr/actions`' `resolveConnections`](https://www.npmjs.com/package/@xeplr/actions), shared with `@xeplr/workflow-engine`, so a job and a workflow step treat a saved connection the same way.
+
 A job stores ids; the executor swaps them for credentials just before calling the action, **after** the occurrence row (with the unresolved inputs) is written:
 
 | input key | becomes |
