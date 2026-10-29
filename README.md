@@ -119,7 +119,8 @@ AUTH_URL=http://localhost:19141 npx xeplr-jobs-server
 | `startAt` | Not picked before this time. `NULL` = as soon as the schedule says. |
 | `retryLimit` | Extra attempts after a failed one. Default 0. |
 | `timeoutMinutes` | Reaper tolerance for this job. `NULL` = the scheduler's default. |
-| `incrementalMode` | `NULL` (not incremental) or `period`. `watermark` is accepted by the model but **refused at run time** (not implemented). |
+| `incrementalMode` | **Which rows each run takes — the job's decision, not the action's.** `NULL`: not incremental, the job runs on its own inputs. `period`: since the last successful run (`{ from: coveredTo, to: now }`). `watermark`: continue from what the target already holds; the window says `{ start: 'highest', reloadDays }` and the action resolves it. |
+| `reloadDays` | `watermark` only: re-read the last N days as well (a row edited after it was loaded). `NULL` = none. |
 | `acceptsInputs` | Input names a trigger may fill on this job, on top of `window`: what a chain may pass in, e.g. `["region"]`. A name containing `connection` is refused on save and at trigger time. `NULL` = only `window`. |
 
 Maintained by the package: `running` (the per-job lock), `nextRunAt` (computed from `schedule` on insert when not given, and after every cron run), `coveredTo` (end of the last successfully covered window), plus `id`, `isActive`, `mtId1–4` and the audit columns.
@@ -258,6 +259,7 @@ Knex migrations in `migrations/`, run against the jobs database:
 | `0007_occurrence_progress` | `jobOccurrences.progress`. |
 | `0008_occurrence_callback` | `jobOccurrences.callbackUrl`. |
 | `0009_job_chains` | `jobs.acceptsInputs`, `jobOccurrences.chain`. |
+| `0010_jobs_reload_days` | `reloadDays`. |
 
 ### `xeplr-jobs-migrate`
 
@@ -299,7 +301,8 @@ Reads `JOBS_CONFIG`, `JOBS_PORT`, `DB_JOBS`, `JOBS_MTS`; calls `start()`. Exits 
 | A finish that arrives after a timeout does not overwrite `timedOut`; it adds `lateFinish`. Every terminal write is conditional on `status = 'running'`. | The lock was already handed back, so "success" would be a claim nothing checked — and `lateFinish.ranForMinutes` is exactly the number to raise the tolerance to. |
 | **Only cron runs move `nextRunAt`.** `startAt` is a separate column. | A manual run crossing a slot used to eat that slot. `nextRunAt` is rewritten from the cron expression, so a start date stored there would be overwritten. |
 | **Incremental windows** (`incrementalMode: 'period'`): the action's `inputs.window` gets `from = coveredTo`, `to = now` (half-open, `from <= x < to`), keeping the job's other window fields. `coveredTo` advances **only on success**, only if the reaper had not already written the run off, and **not** when the trigger supplied its own `window`. | A failed 10:00 run leaves coverage at 09:00 so the 11:00 run covers 09:00–11:00 by itself. No +1 second: on a half-open window it would open a gap. A caller's window is a backfill whose `to` is in the past. |
-| `watermark` or an unknown `incrementalMode` fails the run with a message. | Running it as a period or with no window would move rows the job was configured not to move. |
+| **Continue from what is loaded** (`incrementalMode: 'watermark'`): the window is `{ start: 'highest', reloadDays }` with the job's other window fields, and no dates. The action reads its own target's highest value. `coveredTo` is never moved. An unknown `incrementalMode` fails the run with a message. | Only the action can see its target. An action that does not know `start: 'highest'` must refuse it: running it with no dates would move everything. |
+| **A range from outside always wins.** A trigger's `window` with `from` or `to` replaces the job's `start`/`reloadDays`, so a workflow asking for 1–15 October gets exactly that. | A range somebody asked for that is silently replaced by the job's own start is the worst way to be wrong. |
 | **Trigger overrides are shallow**: each top-level key in `inputs` replaces the job's key; `undefined` is ignored, `null` is kept. The job row is not changed. | Half-merging a `window` or a column mapping produces a shape nobody authored. |
 | `POST /jobs/run` takes overrides **per job id**. | The jobs share nothing; one shared object would land a window meant for one job on another with a same-named field. |
 | Progress writes are throttled to one per 2 s, fire-and-forget, and only while `running`. | A long move reports thousands of batches; a reaped run must not look alive. |

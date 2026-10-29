@@ -49,6 +49,8 @@ class Job extends BaseModel {
         // null = not incremental. See migrations/0006 for why there is no
         // separate 'full'.
         incrementalMode: { type: ['string', 'null'], enum: [null, 'period', 'watermark'] },
+        // 'watermark' only: re-read the last N days as well. See migrations/0010.
+        reloadDays: { type: ['integer', 'null'], minimum: 1 },
         // Input keys a trigger (a chain, above all) may fill on this job, beyond
         // the router's overridableInputs. See migrations/0009.
         acceptsInputs: { type: ['array', 'null'], items: { type: 'string' } },

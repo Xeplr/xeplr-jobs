@@ -163,12 +163,44 @@ test('the callback URL receives the same window and chain', { skip: skip }, asyn
 });
 
 test('a run that fails before its action (a bad incremental mode) is reported too', { skip: skip }, async function() {
-  var job = await saveJob({ name: 'Misconfigured', actionName: 'chain-echo', inputs: {}, incrementalMode: 'watermark' });
+  var job = await saveJob({ name: 'Misconfigured', actionName: 'chain-echo', inputs: {} });
+  // Written past the model's enum, as a row from an older or newer version could be.
+  await conn('jobs').where({ id: job.id }).update({ incrementalMode: 'sometimes' });
   var started = await jobs.trigger(job.id, { chain: { carry: { k: 2 } } });
   var report = await reportFor(started.occurrenceId);
   assert.equal(report.status, 'failed');
-  assert.match(report.error.message, /watermark/);
+  assert.match(report.error.message, /unknown incrementalMode "sometimes"/);
   assert.deepEqual(report.output.chain, { carry: { k: 2 } });
+});
+
+test('watermark: the action is told to continue from what is loaded, with the re-read days', { skip: skip }, async function() {
+  var job = await saveJob({ name: 'Continue', actionName: 'chain-echo', inputs: { window: { column: 'postedAt' } },
+    incrementalMode: 'watermark', reloadDays: 7 });
+  var report = await reportFor((await jobs.trigger(job.id, {})).occurrenceId);
+  assert.equal(report.status, 'success');
+  assert.deepEqual(report.output.window, { column: 'postedAt', start: 'highest', reloadDays: 7 });
+  var after = await conn('jobs').where({ id: job.id }).first();
+  assert.equal(after.coveredTo, null, 'a watermark run never moves coveredTo');
+});
+
+test('watermark: a range from outside wins, and is moved exactly', { skip: skip }, async function() {
+  var job = await saveJob({ name: 'Asked', actionName: 'chain-echo', inputs: { window: { column: 'postedAt' } },
+    incrementalMode: 'watermark', reloadDays: 3 });
+  var range = { from: '2026-10-01T00:00:00.000Z', to: '2026-10-16T00:00:00.000Z' };
+  var report = await reportFor((await jobs.trigger(job.id, { inputs: { window: range } })).occurrenceId);
+  assert.deepEqual(report.output.window, Object.assign({ column: 'postedAt' }, range));
+});
+
+test('period: a successful run moves coveredTo to its end', { skip: skip }, async function() {
+  var job = await saveJob({ name: 'Since last', actionName: 'chain-echo', inputs: {}, incrementalMode: 'period' });
+  var report = await reportFor((await jobs.trigger(job.id, {})).occurrenceId);
+  assert.equal(report.output.window.from, null, 'never run: from the start');
+  var after = await conn('jobs').where({ id: job.id }).first();
+  assert.equal(new Date(after.coveredTo).toISOString(), new Date(report.output.window.to).toISOString());
+});
+
+test('reloadDays must be a whole number of days, at least 1', { skip: skip }, async function() {
+  await assert.rejects(saveJob({ name: 'Zero', actionName: 'chain-echo', incrementalMode: 'watermark', reloadDays: 0 }));
 });
 
 test('a run the reaper times out is reported, though its worker never came back', { skip: skip }, async function() {
