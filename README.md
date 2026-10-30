@@ -283,6 +283,8 @@ Reads `JOBS_CONFIG`, `JOBS_PORT`, `DB_JOBS`, `JOBS_MTS`; calls `start()`. Exits 
 
 `init()` registers every built-in from `@xeplr/actions` that has a `name` and an `execute` function, **except** `spawnProgram` and `dbMove`. Placeholders with no implementation are skipped and named in one startup log line. With the current `@xeplr/actions` that registers `email-send`, `db-fetch`, `db-push`, `db-procedure`, `db-list-tables`, `db-list-views`, `db-list-procedures`, `db-list-columns`, `file-upload`, `email-read`, `email-move`, `email-delete`, `email-download-email`, `email-download-attachments`. Add your own with `registerAction()`.
 
+**Files are per tenant** (`@xeplr/actions` 2): a job runs inside its own tenant's context, so the files its action reads or writes are in that tenant's folder under `XEPLR_DATA_DIR`. Spread `@xeplr/actions`' `requiredEnv` into your app's list too, and call `@xeplr/db`'s `registerApplication()` at boot. A job saved with tenant `*` gets the `_all` folder; one with no tenant cannot touch files.
+
 ## Rules the code enforces, and why
 
 | rule | why |
