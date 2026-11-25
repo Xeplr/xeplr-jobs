@@ -1,4 +1,4 @@
-const { registerMTs, getMtConfig } = require('@xeplr/db');
+const { registerMTs, getMtConfig, resolveConfig } = require('@xeplr/db');
 const jobsDb = require('./lib/db');
 const createApp = require('@xeplr/base-apis/express');
 const createJobRouter = require('./lib/jobRouter');
@@ -129,7 +129,24 @@ async function init(config) {
   // A SECONDARY connection, with jobs' own models bound to it — never the
   // process's global Objection binding. See lib/db.js for why that matters
   // the moment jobs is embedded in a host app.
-  return jobsDb.connectJobsDb(config);
+  var conn = await jobsDb.connectJobsDb(config);
+
+  // migrate: true — bring jobs' own tables up to date now, so an app that
+  // embeds jobs migrates itself on start instead of needing
+  // `xeplr-jobs-migrate up` first. Off by default: a SECOND process of the
+  // same install (a separate scheduler service) must not race the first one's
+  // migration run at a deploy — the one that serves the API says true.
+  if (config.migrate === true) {
+    var connectionName = config.connectionName || 'jobs';
+    await resolveConfig(connectionName, config.connection || config.db);
+    var ran = await require('./lib/migrate').migrateUp({
+      db: config.database || process.env.DB_JOBS,
+      connectionName: connectionName,
+      extDir: config.migrations
+    });
+    if (ran.migrations.length) console.log('[jobs] ran ' + ran.migrations.length + ' migrations');
+  }
+  return conn;
 }
 
 /**
@@ -167,6 +184,21 @@ function warnIfUnscoped(logger) {
  */
 function trigger(jobId, body, options) {
   return triggerLib.triggerJob(jobsDb.boundModels(), jobId, body, options);
+}
+
+/**
+ * Keep a schedule another product owns as an ordinary job — create it, bring
+ * it up to date, or (spec null) remove it. See lib/keep.js.
+ *
+ *   keepSchedule(id, { name, actionName, inputs, cron, timezone }) → the job
+ *   keepSchedule(id, null)                                         → null
+ *   keepSchedule(id, spec, { system: true })   a job of no tenant
+ *
+ * A paused job stays paused. The workflow engine calls this through its host
+ * (startEngine's keepSchedule) when a workflow with a schedule is saved.
+ */
+function keepSchedule(id, spec, opts) {
+  return require('./lib/keep').keepSchedule(id, spec, opts);
 }
 
 function router(options) {
@@ -300,6 +332,7 @@ module.exports = {
   init,
   router,
   trigger,
+  keepSchedule,
   // What every run receives — its window's start and end — and the binding
   // that fills `{window.from}` / `{window.to}` in a job's inputs.
   runContract: require('./lib/runContract'),

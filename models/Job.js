@@ -29,6 +29,12 @@ class Job extends BaseModel {
         status: { type: 'string', maxLength: 20 },
         running: { type: 'boolean' },
         schedule: { type: ['string', 'null'], maxLength: 100 },
+        // The zone `schedule` is read in (an IANA name). Null = the server's.
+        // See migrations/0011.
+        timezone: { type: ['string', 'null'], maxLength: 64 },
+        // A job of the install itself (the workflow engine's due work),
+        // listed to every company and changed by no one. See migrations/0012.
+        system: { type: 'boolean' },
         // DERIVED, and rewritten on every save and every run — which is
         // exactly why startAt below cannot be folded into it.
         nextRunAt: { type: ['string', 'null'] },
@@ -78,8 +84,23 @@ class Job extends BaseModel {
     if (this.schedule && !this.nextRunAt) {
       try {
         var { computeNextRun } = require('../lib/cron');
-        this.nextRunAt = computeNextRun(this.schedule).toISOString();
+        this.nextRunAt = computeNextRun(this.schedule, null, this.timezone).toISOString();
       } catch (_) { /* invalid cron → picker treats NULL as run-now, self-repairs */ }
+    }
+  }
+
+  // A SAVE THAT CHANGES WHEN IT RUNS moves its next run. The Jobs screen
+  // sends the schedule and the time zone with every save; without this a new
+  // cron, or a new zone, took effect only after the next run on the old one.
+  // A caller that sets nextRunAt itself (keepSchedule, which keeps a due run
+  // where it is) is left alone.
+  $beforeUpdate(opt, ctx) {
+    super.$beforeUpdate(opt, ctx);
+    if (typeof this.schedule === 'string' && this.schedule && this.nextRunAt === undefined) {
+      try {
+        var { computeNextRun } = require('../lib/cron');
+        this.nextRunAt = computeNextRun(this.schedule, null, this.timezone || null).toISOString();
+      } catch (_) { /* an invalid cron is reported when it runs, as on insert */ }
     }
   }
 
