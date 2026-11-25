@@ -65,6 +65,7 @@ AUTH_URL=http://localhost:19141 npx xeplr-jobs-server
 |---|---|
 | `init(config)` | Register tenancy (`mts`), set up the executor, register the default actions, connect to the jobs database (created if missing). Resolves to the knex connection. Call once, first. |
 | `router(options?)` | Express router with the [routes](#routes). `options.auth`: one middleware, or `{ list, getById, save, delete }`. |
+| `keepSchedule(id, spec, options?)` | Keep a schedule **another product owns** as an ordinary job — see [Schedules other products own](#schedules-other-products-own). `spec`: `{ name, description?, actionName, inputs?, cron, timezone? }`, or `null` to remove it. `options.system: true` for a [system job](#system-jobs). Resolves to the job (or `null`). |
 | `trigger(jobId, { inputs?, callbackUrl?, chain? }, options?)` | Start one run in-process, under the same input rule as `POST /jobs/:id/trigger`. Resolves at once to `{ occurrenceId, jobId, status: 'running' }`; throws with `err.code` `NOT_FOUND`, `BUSY` or `INPUTS_REFUSED`. Call it inside the job's tenant context. `options`: `overridableInputs`, `triggerType`. |
 | `startScheduler(config?)` | Start the picker/reaper loop. Warns if tenancy is not registered. Returns `{ stop }`. Throws if already started. |
 | `stopScheduler()` | Stop the loop and remove its SIGTERM/SIGINT handlers. |
@@ -91,6 +92,7 @@ AUTH_URL=http://localhost:19141 npx xeplr-jobs-server
 | `maxConcurrent` | Executor concurrency cap. Default 20. |
 | `logger` | Object with `info`, `important`, `error`, `critical`. Default: `@xeplr/logs` `createLogger('jobs')`, else console. |
 | `defaultActions` | `false` to skip `registerDefaultActions()`. |
+| `migrate` | `true`: bring the jobs tables up to date before connecting (the same migrations as `xeplr-jobs-migrate up`, plus `XEPLR_JOBS_MIGRATIONS`). **Off by default** — pass it in the one process that serves the API, not in a second scheduler process, so two processes never run one migration ledger at a deploy. `migrations` overrides `XEPLR_JOBS_MIGRATIONS`. |
 | `onFinish` | `async ({ status, error, output, occurrence }) => …`, called for **every** run that ends (success, failure, `skipped`, `timedOut`, `interrupted`), cron runs included, inside the run's tenant context. The same envelope a [callback](#callbacks) gets. This is how a host's workflow engine follows one job with the next. Errors are logged and never affect the run. |
 
 ### `startScheduler(config)`
@@ -115,6 +117,7 @@ AUTH_URL=http://localhost:19141 npx xeplr-jobs-server
 | `actionName` | A registered action. |
 | `inputs` | JSON handed to the action (validated against its `inputSchema` by `@xeplr/actions`). |
 | `schedule` | Cron expression (`cron-parser`). `NULL` = manual only — the scheduler never picks it. |
+| `timezone` | The time zone `schedule` is read in, an IANA name (`Asia/Kolkata`). `NULL` = the server's own. "0 9 * * 1" in `Asia/Kolkata` is Mondays at 9:00 in Kolkata wherever the server runs. |
 | `status` | `ready` (default) or `pause`. Only `ready` jobs are picked. |
 | `startAt` | Not picked before this time. `NULL` = as soon as the schedule says. |
 | `retryLimit` | Extra attempts after a failed one. Default 0. |
@@ -123,7 +126,7 @@ AUTH_URL=http://localhost:19141 npx xeplr-jobs-server
 | `reloadDays` | `watermark` only: re-read the last N days as well (a row edited after it was loaded). `NULL` = none. |
 | `acceptsInputs` | Input names a trigger may fill on this job, on top of `window`: what a chain may pass in, e.g. `["region"]`. A name containing `connection` is refused on save and at trigger time. `NULL` = only `window`. |
 
-Maintained by the package: `running` (the per-job lock), `nextRunAt` (computed from `schedule` on insert when not given, and after every cron run), `coveredTo` (end of the last successfully covered window), plus `id`, `isActive`, `mtId1–4` and the audit columns.
+Maintained by the package: `running` (the per-job lock), `nextRunAt` (computed from `schedule` in its `timezone` on insert when not given, on a save that sends a `schedule`, and after every cron run), `system` (a [system job](#system-jobs) — set only by `keepSchedule(..., { system: true })`), `coveredTo` (end of the last successfully covered window), plus `id`, `isActive`, `mtId1–4` and the audit columns.
 
 A job is picked when `status = 'ready' AND running = false AND schedule IS NOT NULL AND (nextRunAt IS NULL OR nextRunAt <= now) AND (startAt IS NULL OR startAt <= now)`.
 
@@ -161,9 +164,11 @@ A job whose inputs bind the window this way is not also handed it as its action'
 ```js
 execute({
   input,        // job.inputs, + the computed window, + the trigger's overrides, with *ConnectionInfoId resolved
-  system: { jobId, occurrenceId, startedAt, triggeredBy: { type }, onProgress }   // same object on every retry
+  system: { jobId, occurrenceId, startedAt, triggeredBy: { type }, dueAt, onProgress }   // same object on every retry
 })
 ```
+
+`system.dueAt` is the slot a **cron** run was picked for (its `nextRunAt`), as an ISO instant — not `startedAt`. A run picked a few seconds late, or after the process was down, is still the 09:00 run, so an action that works out "the month before" from it gets the same answer either way. `null` for a run started by hand or by a trigger.
 
 `system.onProgress({ rowsRead, batches })` writes the occurrence's `progress`, at most once every 2 seconds, only while it is `running`.
 
@@ -183,6 +188,8 @@ Relative to where `router()` is mounted. Responses use xeplr's `{ code, message,
 | `POST /jobs/run` | Run several now. Body `{ jobIds: [...], inputs?: { <jobId>: {...} } }`, each checked like `trigger`'s. Returns `{ triggered, missing }`; 400 without `jobIds` or with a key that may not be overridden. |
 | `POST /jobs/:id/pause` | `status = 'pause'`. |
 | `POST /jobs/:id/resume` | `status = 'ready'`. |
+
+`POST /jobs/save`, `POST /jobs/delete`, `/pause` and `/resume` answer **403** with the reason in words when they would touch a [system job](#system-jobs), or when a save tries to make one — for every caller. Run now (`/trigger`, `/jobs/run`) is allowed on it.
 | `GET /job-occurrences` | List occurrences (`genericRoute`). |
 | `GET /job-occurrences/:id` | One occurrence. |
 | `POST /job-occurrences/save`, `POST /job-occurrences/delete` | `genericRoute` save / soft delete. |
@@ -260,6 +267,10 @@ Knex migrations in `migrations/`, run against the jobs database:
 | `0008_occurrence_callback` | `jobOccurrences.callbackUrl`. |
 | `0009_job_chains` | `jobs.acceptsInputs`, `jobOccurrences.chain`. |
 | `0010_jobs_reload_days` | `reloadDays`. |
+| `0011_jobs_timezone` | `timezone` (nullable: the server's zone). |
+| `0012_jobs_system` | `system` (default `false`). |
+
+An app that embeds jobs passes `init({ migrate: true })` in the process that serves its API, and these run on start.
 
 ### `xeplr-jobs-migrate`
 
@@ -278,6 +289,31 @@ npx xeplr-jobs-server
 ```
 
 Reads `JOBS_CONFIG`, `JOBS_PORT`, `DB_JOBS`, `JOBS_MTS`; calls `start()`. Exits 1 on invalid JSON or a failed start. When run as a child process it sends `{ status: 'ready', port }` once the server is up.
+
+## Schedules other products own
+
+A product with its own idea of "run this on a schedule" does not run a clock of its own: it keeps a job. `@xeplr/workflow-engine` does this for every workflow whose trigger is "On a schedule" — its host passes `jobs.keepSchedule` to the engine, and saving the workflow keeps the job.
+
+```js
+await jobs.keepSchedule(workflowId, {
+  name: 'Workflow: Month-end recon',
+  actionName: 'workflow-scheduled',        // registered by the host
+  inputs: { workflowId },
+  cron: '30 7 1 * *',
+  timezone: 'Asia/Kolkata'
+})
+await jobs.keepSchedule(workflowId, null)    // removed: unpublished, switched off, deleted
+```
+
+- **By id**: keeping it twice is keeping it once. The owner picks an id it can find again.
+- **A paused job stays paused.** Keeping it again changes the name, action, inputs, cron and zone, never `status`: somebody who paused it on the Jobs screen paused it.
+- **A due run stays due.** `nextRunAt` is worked out again only when the cron or the zone changed.
+- **In the caller's tenant**, like `trigger()`. An id another company's job already has is refused. A job soft-deleted on the Jobs screen is made again on the next keep.
+- A cron or zone it cannot read, or a missing name or action, is refused with `err.code = 'SCHEDULE_INVALID'`.
+
+### System jobs
+
+`keepSchedule(id, spec, { system: true })` keeps a job of the **install itself** — the workflow engine's "due work" (`workflow-due`, every minute). It is written with `mtId1–4 = '*'`, so every company's Jobs screen lists it and its runs, and with `system = true`, so **nobody can change it from a screen — Super Admin included**: save, delete, pause and resume answer 403, saying why. Pausing it would stop that work for every company. Only code changes it, through `keepSchedule(..., { system: true })`. Run now stays allowed; it only does what is already due, once. An action run by a system job must answer in counts only, because its runs are listed to every company.
 
 ## Which actions a job can run
 
@@ -301,6 +337,8 @@ Reads `JOBS_CONFIG`, `JOBS_PORT`, `DB_JOBS`, `JOBS_MTS`; calls `start()`. Exits 
 | **Retries are opt-in** (`retryLimit`, default 0), and only a *returned* failure is retried, not a thrown framework error. All attempts share one occurrence row and one `system` object. | Silently re-running something that moves data is worse than leaving it failed and visible; a retry is the same due slot, not a new run. |
 | **`timedOut` is not `failed`.** The reaper marks runs still `running` past `timeoutMinutes` (job, then scheduler, then 30), releases the lock and moves `nextRunAt` on. No heartbeat. | `running` is a lock with no expiry: a SIGKILLed or OOM-killed worker would leave the job locked forever. `failed` means the process reported an error; `timedOut` means nobody came back. The user knows how long their job takes; the system does not. |
 | A finish that arrives after a timeout does not overwrite `timedOut`; it adds `lateFinish`. Every terminal write is conditional on `status = 'running'`. | The lock was already handed back, so "success" would be a claim nothing checked — and `lateFinish.ranForMinutes` is exactly the number to raise the tolerance to. |
+| **A schedule is read in its job's `timezone`** (blank: the server's), everywhere the next run is worked out. | "2 in the morning" means where the business is; a server in UTC fired it hours off. |
+| **A system job is changed by no one from a screen.** | It is the one clock for every company; a pause by one company's admin would stop everyone's due work. |
 | **Only cron runs move `nextRunAt`.** `startAt` is a separate column. | A manual run crossing a slot used to eat that slot. `nextRunAt` is rewritten from the cron expression, so a start date stored there would be overwritten. |
 | **Incremental windows** (`incrementalMode: 'period'`): the action's `inputs.window` gets `from = coveredTo`, `to = now` (half-open, `from <= x < to`), keeping the job's other window fields. `coveredTo` advances **only on success**, only if the reaper had not already written the run off, and **not** when the trigger supplied its own `window`. | A failed 10:00 run leaves coverage at 09:00 so the 11:00 run covers 09:00–11:00 by itself. No +1 second: on a half-open window it would open a gap. A caller's window is a backfill whose `to` is in the past. |
 | **Continue from what is loaded** (`incrementalMode: 'watermark'`): the window is `{ start: 'highest', reloadDays }` with the job's other window fields, and no dates. The action reads its own target's highest value. `coveredTo` is never moved. An unknown `incrementalMode` fails the run with a message. | Only the action can see its target. An action that does not know `start: 'highest'` must refuse it: running it with no dates would move everything. |
@@ -333,7 +371,7 @@ npm test
 JOBS_TEST_PG='{"host":"localhost","port":5432,"user":"postgres","password":"…"}' npm test
 ```
 
-`test/triggerInputs.test.js` checks the input rule through the router. `test/chains.test.js` runs on a real Postgres (a scratch database, created and dropped) and is skipped without `JOBS_TEST_PG`: every way a run ends reaches `onFinish` with its window and chain, cron runs included; a trigger fills only `window` and accepted inputs; a job cannot accept a connection; a callback URL receives the same envelope.
+`test/triggerInputs.test.js` checks the input rule through the router. `test/keepSchedule.test.js` (real Postgres, two tenancy levels) checks keepSchedule — company, pause kept, due run kept, removal, another company's id refused — a system job (every company's, run by the scheduler with its `dueAt`, refused by every change route, Run now allowed), the time zone, a screen save moving `nextRunAt`, and `init({ migrate: true })`. `test/chains.test.js` runs on a real Postgres (a scratch database, created and dropped) and is skipped without `JOBS_TEST_PG`: every way a run ends reaches `onFinish` with its window and chain, cron runs included; a trigger fills only `window` and accepted inputs; a job cannot accept a connection; a callback URL receives the same envelope.
 
 ## License
 

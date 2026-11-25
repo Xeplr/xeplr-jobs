@@ -4,7 +4,7 @@
 // in the npm script) — @xeplr/* packages never read .env files.
 
 const path = require('path');
-const { up, rollback, status } = require('@xeplr/db').migrator;
+const { rollback, status } = require('@xeplr/db').migrator;
 const { resolveConfig, migrationsFor, ensureDatabaseFor } = require('@xeplr/db');
 
 /**
@@ -68,7 +68,8 @@ async function main() {
 
   switch (command) {
     case 'up': {
-      const result = await up(options);
+      // The same call init({ migrate: true }) makes (lib/migrate.js).
+      const result = await require('../lib/migrate').migrateUp({ db: options.db, connectionName: options.connectionName, extDir: options.extDir });
       if (result.migrations.length === 0) {
         console.log('Already up to date');
       } else {
